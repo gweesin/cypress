@@ -19,6 +19,7 @@ import i18n from '../../src/locales/en-US.json'
 import { addNetworkCommands } from './onlineNetwork'
 import { logInternal } from './utils'
 import { tabUntil } from './tab-until'
+import './browserIconCommands'
 
 configure({ testIdAttribute: 'data-cy' })
 
@@ -401,7 +402,7 @@ function visitLaunchpad (options: { showWelcome?: boolean } = { showWelcome: fal
         // avoid re-stubbing already stubbed prompts in case we call getPreferences multiple times
         if ((ctx._apis.localSettingsApi.getPreferences as any).wrappedMethod === undefined) {
           o.sinon.stub(ctx._apis.localSettingsApi, 'getPreferences').resolves({ majorVersionWelcomeDismissed: {
-            [13]: Date.now(),
+            [14]: Date.now(),
           } })
         }
       }).then(() => {

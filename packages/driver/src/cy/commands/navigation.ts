@@ -616,6 +616,10 @@ export default (Commands, Cypress, cy, state, config) => {
           cleanup()
         }
 
+        // Make sure the reload command can communicate with the AUT.
+        // if we failed for any other reason, we need to display the correct error to the user.
+        Cypress.ensure.commandCanCommunicateWithAUT(cy)
+
         return null
       })
     },
@@ -699,6 +703,9 @@ export default (Commands, Cypress, cy, state, config) => {
           if (typeof cleanup === 'function') {
             cleanup()
           }
+
+          // Make sure the go command can communicate with the AUT.
+          Cypress.ensure.commandCanCommunicateWithAUT(cy)
 
           return null
         })
@@ -1046,7 +1053,10 @@ export default (Commands, Cypress, cy, state, config) => {
           // or are a spec bridge,
           // then go ahead and change the iframe's src
           // we use the super domain origin as we can interact with subdomains based document.domain set to the super domain origin
-          if (remote.superDomainOrigin === existing.superDomainOrigin || previouslyVisitedLocation || Cypress.isCrossOriginSpecBridge) {
+          const remoteOrigin = Cypress.config('injectDocumentDomain') ? remote.superDomainOrigin : remote.origin
+          const existingOrigin = Cypress.config('injectDocumentDomain') ? existing.superDomainOrigin : existing.origin
+
+          if (remoteOrigin === existingOrigin || previouslyVisitedLocation || Cypress.isCrossOriginSpecBridge) {
             if (!previouslyVisitedLocation) {
               previouslyVisitedLocation = remote
             }

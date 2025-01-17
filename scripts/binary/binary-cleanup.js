@@ -50,20 +50,11 @@ const getDependencyPathsToKeep = async (buildAppDir) => {
     'node_modules/html-webpack-plugin-4/index.js',
     'node_modules/html-webpack-plugin-5/index.js',
     'node_modules/mocha-7.0.1/index.js',
+    'packages/server/node_modules/webdriver/build/index.js',
   ]
 
   let entryPoints = new Set([
     ...startingEntryPoints.map((entryPoint) => path.join(unixBuildAppDir, entryPoint)),
-    // These dependencies are completely dynamic using the pattern `require(`./${name}`)` and will not be pulled in by esbuild but still need to be kept in the binary.
-    ...['ibmi',
-      'sunos',
-      'android',
-      'darwin',
-      'freebsd',
-      'linux',
-      'openbsd',
-      'sunos',
-      'win32'].map((platform) => path.join(unixBuildAppDir, `node_modules/default-gateway/${platform}.js`)),
   ])
   let esbuildResult
   let newEntryPointsFound = true
@@ -170,8 +161,8 @@ const buildEntryPointAndCleanup = async (buildAppDir) => {
   await Promise.all(potentiallyRemovedDependencies.map(async (dependency) => {
     const typeScriptlessDependency = dependency.replace(/\.ts$/, '.js')
 
-    // marionette-client and babel/runtime require all of their dependencies in a very non-standard dynamic way. We will keep anything in marionette-client and babel/runtime
-    if (!keptDependencies.includes(typeScriptlessDependency.slice(2)) && !typeScriptlessDependency.includes('marionette-client') && !typeScriptlessDependency.includes('@babel/runtime')) {
+    // babel/runtime requires all of its dependencies in a very non-standard dynamic way. We will keep anything in babel/runtime
+    if (!keptDependencies.includes(typeScriptlessDependency.slice(2)) && !typeScriptlessDependency.includes('@babel/runtime')) {
       await fs.remove(path.join(buildAppDir, typeScriptlessDependency))
     }
   }))

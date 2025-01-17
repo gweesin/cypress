@@ -37,7 +37,7 @@ describe('lib/cloud/protocol', () => {
   beforeEach(async () => {
     protocolManager = new ProtocolManager()
 
-    await protocolManager.setupProtocol(stubProtocol, { runId: '1', testingType: 'e2e' })
+    await protocolManager.setupProtocol(stubProtocol, { runId: '1', testingType: 'e2e', projectId: '1', cloudApi: { url: 'http://localhost:1234', retryWithBackoff: async () => {}, requestPromise: { get: async () => {} } } })
 
     protocol = (protocolManager as any)._protocol
     expect((protocol as any)).not.to.be.undefined
@@ -90,9 +90,20 @@ describe('lib/cloud/protocol', () => {
       },
     ]
 
-    protocolManager.beforeSpec({
+    const spec = {
       instanceId: 'instanceId',
-    })
+      absolute: '/path/to/spec',
+      relative: 'spec',
+      relativeToCommonRoot: 'common/root',
+      specFileExtension: '.ts',
+      fileExtension: '.ts',
+      specType: 'integration' as Cypress.CypressSpecType,
+      baseName: 'spec',
+      name: 'spec',
+      fileName: 'spec.ts',
+    }
+
+    protocolManager.beforeSpec(spec)
 
     expect((protocolManager as any)._errors).to.be.empty
 
@@ -101,6 +112,7 @@ describe('lib/cloud/protocol', () => {
       archivePath: path.join(os.tmpdir(), 'cypress', 'protocol', 'instanceId.tar'),
       dbPath: path.join(os.tmpdir(), 'cypress', 'protocol', 'instanceId.db'),
       db: mockDb,
+      spec,
     })
 
     expect(mockDatabase).to.be.calledWith(path.join(os.tmpdir(), 'cypress', 'protocol', 'instanceId.db'), {
@@ -327,7 +339,7 @@ describe('lib/cloud/protocol', () => {
 
         sinon.stub(protocol, 'getDbMetadata').returns({ offset, size })
         sinon.stub(fs, 'unlink').withArgs(filePath).resolves()
-        protocolManager.beforeSpec({ instanceId })
+        protocolManager.beforeSpec({ instanceId, absolute: '/path/to/spec', relative: 'spec', relativeToCommonRoot: 'common/root', specFileExtension: '.ts', fileExtension: '.ts', specType: 'integration', baseName: 'spec', name: 'spec', fileName: 'spec.ts' })
 
         expectedAfterSpecTotal = 225
 

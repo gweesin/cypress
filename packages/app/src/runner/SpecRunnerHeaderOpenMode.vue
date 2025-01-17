@@ -27,6 +27,7 @@
           ref="autUrlInputRef"
           :value="studioStore.needsUrl ? urlInProgress : autUrl"
           data-cy="aut-url-input"
+          aria-label="url of the application under test"
           class="flex grow mr-[12px] leading-normal max-w-full text-indigo-500 z-51 self-center hocus-link-default truncate"
           @input="setStudioUrl"
           @click="openExternally"
@@ -62,11 +63,11 @@
         :disabled="autStore.isRunning"
       >
         <template #heading>
-          <img
+          <component
+            :is="allBrowsersIcons[selectedBrowser.displayName?.toLowerCase()] || allBrowsersIcons.generic"
             class="min-w-[16px] w-[16px]"
-            :src="allBrowsersIcons[selectedBrowser.displayName] || allBrowsersIcons.generic"
             :alt="selectedBrowser.displayName"
-          >
+          />
           {{ selectedBrowser.displayName }} {{ selectedBrowser.majorVersion }}
         </template>
 

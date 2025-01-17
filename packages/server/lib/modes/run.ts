@@ -28,6 +28,8 @@ import type { ProtocolManager } from '../cloud/protocol'
 import { telemetry } from '@packages/telemetry'
 import { CypressRunResult, createPublicBrowser, createPublicConfig, createPublicRunResults, createPublicSpec, createPublicSpecResults } from './results'
 import { EarlyExitTerminator } from '../util/graceful_crash_handling'
+import { CDPFailedToStartFirefox } from '../browsers/firefox'
+import type { CypressError } from '@packages/errors'
 
 type SetScreenshotMetadata = (data: TakeScreenshotProps) => void
 type ScreenshotMetadata = ReturnType<typeof screenshotMetadata>
@@ -419,7 +421,7 @@ async function listenForProjectEnd (project: ProjectBase, exit: boolean): Promis
         project.once('end', (results) => {
           debug('project ended with results %O', results)
           // If the project ends and the spec is skipped, treat the run as cancelled
-          // as we do not want to update the dev server unnecessarily for experimentalJustInTimeCompile.
+          // as we do not want to update the dev server unnecessarily for justInTimeCompile.
           if (results?.skippedSpec) {
             isRunCancelled = true
           }
@@ -497,17 +499,7 @@ async function waitForBrowserToConnect (options: { project: Project, socketId: s
       coreData.didBrowserPreviouslyHaveUnexpectedExit = false
     }
 
-    return Bluebird.all([
-      waitForSocketConnection(project, socketId),
-      // TODO: remove the need to extend options and coerce this type
-      launchBrowser(options as typeof options & { setScreenshotMetadata: SetScreenshotMetadata }),
-    ])
-    .timeout(browserTimeout)
-    .then(() => {
-      telemetry.getSpan(`waitForBrowserToConnect:attempt:${browserLaunchAttempt}`)?.end()
-    })
-    .catch(Bluebird.TimeoutError, async (err) => {
-      debug('Catch on waitForBrowserToConnect')
+    async function retryOnError (err: CypressError) {
       telemetry.getSpan(`waitForBrowserToConnect:attempt:${browserLaunchAttempt}`)?.end()
       console.log('')
 
@@ -519,7 +511,12 @@ async function waitForBrowserToConnect (options: { project: Project, socketId: s
         // try again up to 3 attempts
         const word = browserLaunchAttempt === 1 ? 'Retrying...' : 'Retrying again...'
 
-        errors.warning('TESTS_DID_NOT_START_RETRYING', word)
+        if (CDPFailedToStartFirefox.isCDPFailedToStartFirefoxError(err?.originalError)) {
+          errors.warning('FIREFOX_CDP_FAILED_TO_CONNECT', word)
+        } else {
+          errors.warning('TESTS_DID_NOT_START_RETRYING', word)
+        }
+
         browserLaunchAttempt += 1
 
         return await wait()
@@ -529,6 +526,33 @@ async function waitForBrowserToConnect (options: { project: Project, socketId: s
       errors.log(err)
 
       onError(err)
+    }
+
+    return Bluebird.all([
+      waitForSocketConnection(project, socketId),
+      // TODO: remove the need to extend options and coerce this type
+      launchBrowser(options as typeof options & { setScreenshotMetadata: SetScreenshotMetadata }),
+    ]).catch((e: CypressError) => {
+      // if the error wrapped is a CDPFailedToStartFirefox, try to relaunch the browser
+      if (CDPFailedToStartFirefox.isCDPFailedToStartFirefoxError(e?.originalError)) {
+        // if CDP fails to connect, which is ultimately out of our control and in the hands of webdriver
+        // we retry launching the browser in the hopes the session is spawned correctly
+        debug(`Caught in launchBrowser: ${e.details}`)
+
+        return retryOnError(e)
+      }
+
+      // otherwise, fail
+      throw e
+    })
+    .timeout(browserTimeout)
+    .then(() => {
+      telemetry.getSpan(`waitForBrowserToConnect:attempt:${browserLaunchAttempt}`)?.end()
+    })
+    .catch(Bluebird.TimeoutError, async (err) => {
+      debug('Catch on waitForBrowserToConnect')
+
+      return retryOnError(err as CypressError)
     })
   }
 
@@ -790,20 +814,22 @@ async function runSpecs (options: { config: Cfg, browser: Browser, sys: any, hea
       printResults.displaySpecHeader(spec.relativeToCommonRoot, index + 1, length, estimated)
     }
 
-    const isExperimentalJustInTimeCompile = options.testingType === 'component' && config.experimentalJustInTimeCompile
+    const isJustInTimeCompile = options.testingType === 'component' && config.justInTimeCompile
 
     // Only update the dev server if the run is not cancelled
-    if (isExperimentalJustInTimeCompile) {
+    if (isJustInTimeCompile) {
       if (isRunCancelled) {
         // TODO: this logic to skip updating the dev-server on cancel needs a system-test before the feature goes generally available.
-        debug(`isExperimentalJustInTimeCompile=true and run is cancelled. Not updating dev server with spec ${spec.absolute}.`)
+        debug(`isJustInTimeCompile=true and run is cancelled. Not updating dev server with spec ${spec.absolute}.`)
       } else {
         const ctx = require('@packages/data-context').getCtx()
 
         // If in run mode, we need to update the dev server with our spec.
         // in open mode, this happens in the browser through the web socket, but we do it here in run mode
-        // to try and have it happen as early as possible to make the test run as fast as possible
-        await ctx._apis.projectApi.getDevServer().updateSpecs([spec])
+        // to try and have it happen as early as possible to make the test run as fast as possible.
+        // NOTE: this is a no-op for @cypress/vite-dev-server and only applies to @cypress/webpack-dev-server
+        // since just-in-time compile does not apply to vite.
+        await ctx._apis.projectApi.getDevServer().updateSpecs([spec], { neededForJustInTimeCompile: true })
       }
     }
 
